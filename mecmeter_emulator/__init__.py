@@ -6,6 +6,7 @@ from homeassistant.helpers import config_validation as cv, event
 from datetime import timedelta
 from datetime import datetime
 import time
+import pytz
 import paho.mqtt.client as mqtt
 DOMAIN = 'mqtt_template_publisher'
 # Define schema for configuration validation
@@ -61,7 +62,7 @@ def setup(hass: HomeAssistant, config: dict):
             "payload": {
                 "inv": {inv_number: {}},
                 "sit": {},
-                "ts": datetime.now().isoformat(timespec='seconds') + "Z"
+                "ts": datetime.now(pytz.UTC).isoformat(timespec='seconds') + "Z"
             }
         }
 
