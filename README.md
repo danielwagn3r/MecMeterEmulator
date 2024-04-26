@@ -1,6 +1,8 @@
 # MEC Meter Emulator
 This is a Home Assistant Custom Integration that provides several Template Values to an MQTT Broker, while emulating the structure of a MECMeter connected to a Fronius Inverter.
 
+Disclaimer: This is an inofficial hobby-project and in no way affiliated with MEC or Fronius. 
+
 To install: copy the mecmeter_emulator folder to your custom_components folder.
 
 Add the following Configuration values to your configuration.yaml
