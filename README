@@ -1,0 +1,1 @@
+This is a Home Assistant Custom Integration that provides several Template Values to an MQTT Broker, while emulating the structure of a MECMeter connected to a Fronius Inverter.
