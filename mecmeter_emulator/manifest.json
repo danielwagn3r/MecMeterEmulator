@@ -1,0 +1,8 @@
+{
+  "domain": "mqtt_template_publisher",
+  "name": "MEC Meter Emulator",
+  "documentation": "https://github.com/cambrosch/MecMeterEmulator",
+  "dependencies": ["mqtt"],
+  "codeowners": ["@cambrosch"],
+  "version": "1.0"
+}
