@@ -8,10 +8,10 @@ Add the following Configuration values to your configuration.yaml
 mqtt_template_publisher:
   broker: host.of.the.mqtt.broker
   port: 8883  # Uses TLS per default
-  username: ubcdwu7bha
-  password: q387aecy9w
-  topic: mecmeter/ubcdwu7bha
-  client_id: ubcdwu7bha
+  username: username
+  password: randompassword
+  topic: topicprefix
+  client_id: clientid
   templates:
     grid: "{{ states('sensor.grid_meter_power') | default('unavailable') }}"
     # Power at the Grid-Meter - Positive = consumption, negative = grid feed in
