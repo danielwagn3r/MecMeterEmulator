@@ -62,7 +62,7 @@ def setup(hass: HomeAssistant, config: dict):
             "payload": {
                 "inv": {inv_number: {}},
                 "sit": {},
-                "ts": datetime.now(pytz.UTC).isoformat(timespec='seconds') + "Z"
+                "ts": datetime.now(pytz.UTC).isoformat(timespec='seconds')
             }
         }
 
