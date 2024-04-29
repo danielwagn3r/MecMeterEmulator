@@ -8,7 +8,7 @@ from datetime import datetime
 import time
 import pytz
 import paho.mqtt.client as mqtt
-DOMAIN = 'mqtt_template_publisher'
+DOMAIN = 'mec_meter_emulator'
 # Define schema for configuration validation
 CONFIG_SCHEMA = vol.Schema({
     DOMAIN: vol.Schema({
@@ -30,7 +30,7 @@ CONFIG_SCHEMA = vol.Schema({
 }, extra=vol.ALLOW_EXTRA)
 
 def setup(hass: HomeAssistant, config: dict):
-    conf = config['mqtt_template_publisher']
+    conf = config['mec_meter_emulator']
     broker = conf['broker']
     port = conf['port']
     username = conf['username']
