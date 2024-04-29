@@ -7,7 +7,7 @@ To install: copy the mecmeter_emulator folder to your custom_components folder.
 
 Add the following Configuration values to your configuration.yaml
 ```
-mqtt_template_publisher:
+mec_meter_emulator:
   broker: host.of.the.mqtt.broker
   port: 8883  # Uses TLS per default
   username: username
