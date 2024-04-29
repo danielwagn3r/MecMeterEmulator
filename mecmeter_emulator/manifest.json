@@ -1,5 +1,5 @@
 {
-  "domain": "mec_meter_emulator,
+  "domain": "mec_meter_emulator",
   "name": "MEC Meter Emulator",
   "documentation": "https://github.com/cambrosch/MecMeterEmulator",
   "dependencies": ["mqtt"],
