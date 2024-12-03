@@ -25,23 +25,35 @@ mec_meter_emulator:
       {{
         (states('sensor.solaredge_i1_m1_ac_power') | float(default=0) * -1 )
       }}
+
     # Power consumption of the house: Negative = consumption, positive = invalid
     ld: >
       {{
         (states('sensor.solaredge_i1_m1_ac_power') | float(default=0)) +
-        (states('sensor.solaredge_i1_ac_power') | float(default=0) * -1 )
+        (states('sensor.solaredge_i1_ac_power') | float(default=0) * -1 ) +
+        min(
+          (states('sensor.solaredge_i1_dc_power') | float(default=0)) +
+          (states('sensor.solaredge_i1_b1_dc_power') | float(default=0)),
+          0
+        )
       }}
+
     # Current PV generation power: Positive = production, negative = invalid
     pv: >
       {{
-        (states('sensor.solaredge_i1_dc_power') | float(default=0)) +
-        (states('sensor.solaredge_i1_b1_dc_power') | float(default=0))
+        max(
+          (states('sensor.solaredge_i1_dc_power') | float(default=0)) +
+          (states('sensor.solaredge_i1_b1_dc_power') | float(default=0)),
+          0
+        )
       }}
+
     # current battery input / output power: positive: battery discharging, negative: battery charging
     akk: >
       {{
         (states('sensor.solaredge_i1_b1_dc_power') | float(default=0) * -1 )
       }}
+
     # SOC of the Home Battery, 0-100
     soc: >
       {{
