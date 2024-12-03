@@ -53,6 +53,6 @@ The five values are all optional, depending on the inverter hardware and availab
 
 ## Remarks
 
-The above sample assumes that besides the inverter an energy meter, eighter separate or bundles with a backup interface is installed, it's power value is accessed with `(states('sensor.solaredge_i1_m1_ac_power')`. 
+The above sample assumes that besides the inverter an energy meter, eighter separate or bundles with a backup interface is installed, it's power value is accessed with `(states('sensor.solaredge_i1_m1_ac_power')`.
 
 In case no battery is installed, simple remove all `(states('sensor.solaredge_i1_b1_dc_power')` references.
