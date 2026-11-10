@@ -17,10 +17,10 @@ from homeassistant.const import (
     CONF_PORT,
     CONF_USERNAME,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.event import track_time_interval
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
@@ -50,7 +50,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Required(CONF_TOPIC): cv.string,
                 vol.Required(CONF_CLIENT_ID): cv.string,
                 vol.Optional(CONF_TEMPLATES, default={}): {
-                    vol.Optional(key): cv.template for key in (*INV_KEYS, *SIT_KEYS)
+                    vol.Optional(key): cv.string for key in (*INV_KEYS, *SIT_KEYS)
                 },
                 vol.Optional(CONF_UPDATE_INTERVAL, default=60): vol.All(
                     vol.Coerce(int), vol.Range(min=5)
@@ -106,7 +106,7 @@ def _build_payload(
 
 
 def _create_client(conf: ConfigType) -> mqtt.Client:
-    """Create, configure and start the MQTT client."""
+    """Create, configure and start the MQTT client (blocking, run in executor)."""
     client = mqtt.Client(client_id=conf[CONF_CLIENT_ID])
     client.username_pw_set(conf[CONF_USERNAME], conf[CONF_PASSWORD])
     client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
@@ -124,21 +124,24 @@ def _create_client(conf: ConfigType) -> mqtt.Client:
     return client
 
 
-def setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the MEC Meter Emulator from YAML."""
     conf = config[DOMAIN]
     topic = f"{conf[CONF_TOPIC]}/solar-api"
-    templates = conf[CONF_TEMPLATES]
+    templates = {
+        key: Template(value, hass) for key, value in conf[CONF_TEMPLATES].items()
+    }
 
-    client = _create_client(conf)
+    client = await hass.async_add_executor_job(_create_client, conf)
 
-    def _publish(_now: datetime) -> None:
+    @callback
+    def _async_publish(_now: datetime) -> None:
         payload = _build_payload(templates, dt_util.utcnow())
         if payload is None:
             return
         client.publish(topic, json.dumps(payload))
 
-    track_time_interval(
-        hass, _publish, timedelta(seconds=conf[CONF_UPDATE_INTERVAL])
+    async_track_time_interval(
+        hass, _async_publish, timedelta(seconds=conf[CONF_UPDATE_INTERVAL])
     )
     return True
