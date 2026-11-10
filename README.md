@@ -3,7 +3,7 @@ This is a Home Assistant Custom Integration that provides several Template Value
 
 Disclaimer: This is an inofficial hobby-project and in no way affiliated with MEC or Fronius. 
 
-To install: copy the mecmeter_emulator folder to your custom_components folder.
+To install: copy the `custom_components/mec_meter_emulator` folder to your `custom_components` folder. If you installed an earlier version, delete the old `custom_components/mecmeter_emulator` folder.
 
 Add the following Configuration values to your configuration.yaml
 ```
@@ -18,7 +18,7 @@ mec_meter_emulator:
     # Power at the Grid-Meter - Positive = consumption, negative = grid feed in
     grid: "{{ states('sensor.grid_meter_power') | default('unavailable') }}"
     # Power consumption of the house: Negative = consumption, positive = invalid
-    ld: "{{ (0-(states('sensor.total_home_power')| float)) | default('unavailable') }}"
+    ld: "{{ 0 - states('sensor.total_home_power') | float if has_value('sensor.total_home_power') else 'unavailable' }}"
     # Current PV generation power: Positive = production, negative = invalid
     pv: "{{ states('sensor.solarpower') | default('unavailable') }}"
     # current battery input / output power: positive: battery discharging, negative: battery charging
@@ -28,3 +28,15 @@ mec_meter_emulator:
   update_interval: 30
 ```
 The five values are all optional, depending on the inverter hardware and available values you have. Leave out any values you cannot provide.
+
+## Development
+
+Run the tests (Python 3.14):
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements_test.txt
+.venv/bin/pytest
+```
+
+GitHub Actions runs the tests and [hassfest](https://developers.home-assistant.io/blog/2020/04/16/hassfest/) on every pull request.
