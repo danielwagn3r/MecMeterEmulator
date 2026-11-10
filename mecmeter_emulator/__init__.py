@@ -156,8 +156,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     def _async_publish(_now: datetime) -> None:
         payload = _build_payload(templates, dt_util.utcnow())
         if payload is None:
+            _LOGGER.debug("No valid template values, skipping publish")
             return
-        client.publish(topic, json.dumps(payload))
+        info = client.publish(topic, json.dumps(payload))
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            _LOGGER.debug("Publish failed: %s", mqtt.error_string(info.rc))
 
     cancel_interval = async_track_time_interval(
         hass, _async_publish, timedelta(seconds=conf[CONF_UPDATE_INTERVAL])
