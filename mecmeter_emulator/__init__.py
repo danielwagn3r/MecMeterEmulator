@@ -107,16 +107,18 @@ def _build_payload(
 
 def _create_client(conf: ConfigType) -> mqtt.Client:
     """Create, configure and start the MQTT client (blocking, run in executor)."""
-    client = mqtt.Client(client_id=conf[CONF_CLIENT_ID])
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2, client_id=conf[CONF_CLIENT_ID]
+    )
     client.username_pw_set(conf[CONF_USERNAME], conf[CONF_PASSWORD])
     client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
     client.enable_logger(_LOGGER)
 
-    def on_connect(client, userdata, flags, rc) -> None:
-        if rc == 0:
-            _LOGGER.info("Connected to MQTT broker %s", conf[CONF_BROKER])
+    def on_connect(client, userdata, flags, reason_code, properties) -> None:
+        if reason_code.is_failure:
+            _LOGGER.error("Failed to connect to MQTT broker: %s", reason_code)
         else:
-            _LOGGER.error("Failed to connect to MQTT broker: %s", rc)
+            _LOGGER.info("Connected to MQTT broker %s", conf[CONF_BROKER])
 
     client.on_connect = on_connect
     client.connect(conf[CONF_BROKER], conf[CONF_PORT])
