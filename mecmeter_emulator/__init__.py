@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import json
 import logging
-import ssl
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -24,6 +23,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
+from homeassistant.util.ssl import client_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def _create_client(conf: ConfigType) -> mqtt.Client:
         mqtt.CallbackAPIVersion.VERSION2, client_id=conf[CONF_CLIENT_ID]
     )
     client.username_pw_set(conf[CONF_USERNAME], conf[CONF_PASSWORD])
-    client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+    client.tls_set_context(client_context())
     client.enable_logger(_LOGGER)
 
     def on_connect(client, userdata, flags, reason_code, properties) -> None:
