@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import json
+import logging
 import ssl
 import time
 from typing import Any
@@ -23,6 +24,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import track_time_interval
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import ConfigType
+
+_LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "mec_meter_emulator"
 
@@ -85,12 +88,13 @@ def _create_client(conf: ConfigType) -> mqtt.Client:
     client = mqtt.Client(client_id=conf[CONF_CLIENT_ID])
     client.username_pw_set(conf[CONF_USERNAME], conf[CONF_PASSWORD])
     client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+    client.enable_logger(_LOGGER)
 
     def on_connect(client, userdata, flags, rc) -> None:
         if rc == 0:
-            print("Connected to MQTT Broker!")
+            _LOGGER.info("Connected to MQTT broker %s", conf[CONF_BROKER])
         else:
-            print("Failed to connect, return code %d\n", rc)
+            _LOGGER.error("Failed to connect to MQTT broker: %s", rc)
 
     client.on_connect = on_connect
     client.connect(conf[CONF_BROKER], conf[CONF_PORT])
