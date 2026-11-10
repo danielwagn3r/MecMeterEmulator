@@ -1,0 +1,174 @@
+"""MEC Meter Emulator: publish template values to an MQTT broker in MECMeter format."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+import json
+import logging
+from typing import Any
+
+import paho.mqtt.client as mqtt
+import voluptuous as vol
+
+from homeassistant.const import (
+    CONF_CLIENT_ID,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_USERNAME,
+    EVENT_HOMEASSISTANT_STOP,
+)
+from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import TemplateError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.template import Template
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
+from homeassistant.util.ssl import client_context
+
+_LOGGER = logging.getLogger(__name__)
+
+DOMAIN = "mec_meter_emulator"
+
+CONF_BROKER = "broker"
+CONF_TOPIC = "topic"
+CONF_TEMPLATES = "templates"
+CONF_UPDATE_INTERVAL = "update_interval"
+
+INV_KEYS = ("soc",)
+SIT_KEYS = ("akk", "grid", "ld", "pv")
+INV_NUMBER = "1"
+INVALID_STATES = {"", "none", "unknown", "unavailable"}
+
+CONFIG_SCHEMA = vol.Schema(
+    {
+        DOMAIN: vol.Schema(
+            {
+                vol.Required(CONF_BROKER): cv.string,
+                vol.Required(CONF_PORT): cv.port,
+                vol.Required(CONF_USERNAME): cv.string,
+                vol.Required(CONF_PASSWORD): cv.string,
+                vol.Required(CONF_TOPIC): cv.string,
+                vol.Required(CONF_CLIENT_ID): cv.string,
+                vol.Optional(CONF_TEMPLATES, default={}): {
+                    vol.Optional(key): cv.string for key in (*INV_KEYS, *SIT_KEYS)
+                },
+                vol.Optional(CONF_UPDATE_INTERVAL, default=60): vol.All(
+                    vol.Coerce(int), vol.Range(min=5)
+                ),
+            }
+        )
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+
+def _render_float(key: str, template: Template) -> float | None:
+    """Render a template to a float, or None if the value is not usable."""
+    try:
+        rendered = template.async_render(parse_result=False)
+    except TemplateError as err:
+        _LOGGER.warning("Error rendering template '%s': %s", key, err)
+        return None
+
+    value = str(rendered).strip()
+    if value.lower() in INVALID_STATES:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        _LOGGER.warning("Template '%s' rendered non-numeric value: %r", key, value)
+        return None
+
+
+def _build_payload(
+    templates: dict[str, Template], now: datetime
+) -> dict[str, Any] | None:
+    """Build the MECMeter payload, or None if no template produced a value."""
+    inv: dict[str, float] = {}
+    sit: dict[str, float] = {}
+    for key, template in templates.items():
+        if (value := _render_float(key, template)) is None:
+            continue
+        (inv if key in INV_KEYS else sit)[key] = value
+
+    if not inv and not sit:
+        return None
+
+    return {
+        "timestampDevice": int(now.timestamp() * 1000),
+        "qos": "good",
+        "payload": {
+            "inv": {INV_NUMBER: inv},
+            "sit": sit,
+            "ts": now.isoformat(timespec="seconds"),
+        },
+    }
+
+
+def _create_client(conf: ConfigType) -> mqtt.Client:
+    """Create, configure and start the MQTT client (blocking, run in executor)."""
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2, client_id=conf[CONF_CLIENT_ID]
+    )
+    client.username_pw_set(conf[CONF_USERNAME], conf[CONF_PASSWORD])
+    client.tls_set_context(client_context())
+    client.enable_logger(_LOGGER)
+
+    def on_connect(client, userdata, flags, reason_code, properties) -> None:
+        if reason_code.is_failure:
+            _LOGGER.error("Failed to connect to MQTT broker: %s", reason_code)
+        else:
+            _LOGGER.info("Connected to MQTT broker %s", conf[CONF_BROKER])
+
+    def on_disconnect(client, userdata, flags, reason_code, properties) -> None:
+        if reason_code.is_failure:
+            _LOGGER.warning(
+                "Disconnected from MQTT broker (%s), reconnecting", reason_code
+            )
+
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    # connect_async + loop_start: the network thread connects in the background
+    # and keeps retrying, so an unreachable broker does not fail HA setup.
+    client.connect_async(conf[CONF_BROKER], conf[CONF_PORT])
+    client.loop_start()
+    return client
+
+
+def _stop_client(client: mqtt.Client) -> None:
+    """Disconnect and stop the MQTT client (blocking, run in executor)."""
+    client.disconnect()
+    client.loop_stop()
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the MEC Meter Emulator from YAML."""
+    conf = config[DOMAIN]
+    topic = f"{conf[CONF_TOPIC]}/solar-api"
+    templates = {
+        key: Template(value, hass) for key, value in conf[CONF_TEMPLATES].items()
+    }
+
+    client = await hass.async_add_executor_job(_create_client, conf)
+
+    @callback
+    def _async_publish(_now: datetime) -> None:
+        payload = _build_payload(templates, dt_util.utcnow())
+        if payload is None:
+            _LOGGER.debug("No valid template values, skipping publish")
+            return
+        info = client.publish(topic, json.dumps(payload))
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            _LOGGER.debug("Publish failed: %s", mqtt.error_string(info.rc))
+
+    cancel_interval = async_track_time_interval(
+        hass, _async_publish, timedelta(seconds=conf[CONF_UPDATE_INTERVAL])
+    )
+
+    async def _async_stop(_event: Event) -> None:
+        cancel_interval()
+        await hass.async_add_executor_job(_stop_client, client)
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_stop)
+    return True
