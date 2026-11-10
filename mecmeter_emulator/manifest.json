@@ -1,8 +1,8 @@
 {
   "domain": "mec_meter_emulator",
   "name": "MEC Meter Emulator",
-  "documentation": "https://github.com/cambrosch/MecMeterEmulator",
-  "dependencies": ["mqtt"],
   "codeowners": ["@cambrosch"],
+  "documentation": "https://github.com/cambrosch/MecMeterEmulator",
+  "requirements": ["paho-mqtt>=2.1.0"],
   "version": "1.0"
 }
