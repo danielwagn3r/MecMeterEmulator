@@ -18,7 +18,7 @@ mec_meter_emulator:
     # Power at the Grid-Meter - Positive = consumption, negative = grid feed in
     grid: "{{ states('sensor.grid_meter_power') | default('unavailable') }}"
     # Power consumption of the house: Negative = consumption, positive = invalid
-    ld: "{{ (0-(states('sensor.total_home_power')| float)) | default('unavailable') }}"
+    ld: "{{ 0 - states('sensor.total_home_power') | float if has_value('sensor.total_home_power') else 'unavailable' }}"
     # Current PV generation power: Positive = production, negative = invalid
     pv: "{{ states('sensor.solarpower') | default('unavailable') }}"
     # current battery input / output power: positive: battery discharging, negative: battery charging
