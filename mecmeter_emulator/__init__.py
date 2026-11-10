@@ -1,85 +1,118 @@
+"""MEC Meter Emulator: publish template values to an MQTT broker in MECMeter format."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
 import json
 import ssl
-import voluptuous as vol
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv, event
-from datetime import timedelta
-from datetime import datetime
 import time
-import pytz
+from typing import Any
+
 import paho.mqtt.client as mqtt
-DOMAIN = 'mec_meter_emulator'
-# Define schema for configuration validation
-CONFIG_SCHEMA = vol.Schema({
-    DOMAIN: vol.Schema({
-    vol.Required('broker'): cv.string,
-    vol.Required('port'): cv.port,
-    vol.Required('username'): cv.string,
-    vol.Required('password'): cv.string,
-    vol.Required('topic'): cv.string,
-    vol.Required('client_id'): cv.string,
-    vol.Optional('templates'): {
-        vol.Optional('soc'): cv.template,
-        vol.Optional('akk'): cv.template,
-        vol.Optional('grid'): cv.template,
-        vol.Optional('ld'): cv.template,
-        vol.Optional('pv'): cv.template
+import pytz
+import voluptuous as vol
+
+from homeassistant.const import (
+    CONF_CLIENT_ID,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_USERNAME,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import track_time_interval
+from homeassistant.helpers.template import Template
+from homeassistant.helpers.typing import ConfigType
+
+DOMAIN = "mec_meter_emulator"
+
+CONF_BROKER = "broker"
+CONF_TOPIC = "topic"
+CONF_TEMPLATES = "templates"
+CONF_UPDATE_INTERVAL = "update_interval"
+
+INV_KEYS = ("soc",)
+SIT_KEYS = ("akk", "grid", "ld", "pv")
+INV_NUMBER = "1"
+
+CONFIG_SCHEMA = vol.Schema(
+    {
+        DOMAIN: vol.Schema(
+            {
+                vol.Required(CONF_BROKER): cv.string,
+                vol.Required(CONF_PORT): cv.port,
+                vol.Required(CONF_USERNAME): cv.string,
+                vol.Required(CONF_PASSWORD): cv.string,
+                vol.Required(CONF_TOPIC): cv.string,
+                vol.Required(CONF_CLIENT_ID): cv.string,
+                vol.Optional(CONF_TEMPLATES, default={}): {
+                    vol.Optional(key): cv.template for key in (*INV_KEYS, *SIT_KEYS)
+                },
+                vol.Required(CONF_UPDATE_INTERVAL, default=60): cv.positive_int,
+            }
+        )
     },
-    vol.Required('update_interval', default=60): cv.positive_int
-    })
-}, extra=vol.ALLOW_EXTRA)
-
-def setup(hass: HomeAssistant, config: dict):
-    conf = config['mec_meter_emulator']
-    broker = conf['broker']
-    port = conf['port']
-    username = conf['username']
-    password = conf['password']
-    topic = conf['topic']
-    client_id = conf.get('client_id')
-    templates = conf.get('templates', {})
-    inv_number = 1
-    update_interval = conf['update_interval']
+    extra=vol.ALLOW_EXTRA,
+)
 
 
-    # Setup MQTT client
-    client = mqtt.Client(client_id=client_id)
-    client.username_pw_set(username, password)
+def _build_payload(templates: dict[str, Template]) -> dict[str, Any] | None:
+    """Build the MECMeter payload, or None if no template produced a value."""
+    inv: dict[str, float] = {}
+    sit: dict[str, float] = {}
+    for key, template in templates.items():
+        rendered = template.async_render()
+        if rendered in ("unknown", "unavailable", None):
+            continue
+        (inv if key in INV_KEYS else sit)[key] = float(rendered)
 
-    def on_connect(client, userdata, flags, rc):
+    if not inv and not sit:
+        return None
+
+    return {
+        "timestampDevice": int(time.time() * 1000),
+        "qos": "good",
+        "payload": {
+            "inv": {INV_NUMBER: inv},
+            "sit": sit,
+            "ts": datetime.now(pytz.UTC).isoformat(timespec="seconds"),
+        },
+    }
+
+
+def _create_client(conf: ConfigType) -> mqtt.Client:
+    """Create, configure and start the MQTT client."""
+    client = mqtt.Client(client_id=conf[CONF_CLIENT_ID])
+    client.username_pw_set(conf[CONF_USERNAME], conf[CONF_PASSWORD])
+    client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+
+    def on_connect(client, userdata, flags, rc) -> None:
         if rc == 0:
             print("Connected to MQTT Broker!")
         else:
             print("Failed to connect, return code %d\n", rc)
-    client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+
     client.on_connect = on_connect
-    client.connect(broker, port)
+    client.connect(conf[CONF_BROKER], conf[CONF_PORT])
     client.loop_start()
-    def update_data(event_time):
-        data = {
-            "timestampDevice": int(time.time() * 1000),
-            "qos": "good",
-            "payload": {
-                "inv": {inv_number: {}},
-                "sit": {},
-                "ts": datetime.now(pytz.UTC).isoformat(timespec='seconds')
-            }
-        }
+    return client
 
-        # Process each template and only add if available and valid
-        for key, value in templates.items():
-            rendered = value.async_render()
-            if rendered not in ['unknown', 'unavailable', None]:
-                if key == 'soc':
-                    data['payload']['inv'][inv_number][key] = float(rendered)
-                else:
-                    data['payload']['sit'][key] = float(rendered)
 
-        # Publish if there is valid data in the payload
-        if data['payload']['inv'][inv_number] or data['payload']['sit']:
-            json_data = json.dumps(data)
-            client.publish(topic+'/solar-api', json_data)
+def setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the MEC Meter Emulator from YAML."""
+    conf = config[DOMAIN]
+    topic = f"{conf[CONF_TOPIC]}/solar-api"
+    templates = conf[CONF_TEMPLATES]
 
-    # Schedule the periodic update
-    event.track_time_interval(hass, update_data, timedelta(seconds=update_interval))
+    client = _create_client(conf)
+
+    def _publish(_now: datetime) -> None:
+        payload = _build_payload(templates)
+        if payload is None:
+            return
+        client.publish(topic, json.dumps(payload))
+
+    track_time_interval(
+        hass, _publish, timedelta(seconds=conf[CONF_UPDATE_INTERVAL])
+    )
     return True
