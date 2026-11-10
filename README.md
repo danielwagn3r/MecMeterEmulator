@@ -3,7 +3,7 @@ This is a Home Assistant Custom Integration that provides several Template Value
 
 Disclaimer: This is an inofficial hobby-project and in no way affiliated with MEC or Fronius. 
 
-To install: copy the mecmeter_emulator folder to your custom_components folder.
+To install: copy the `custom_components/mec_meter_emulator` folder to your `custom_components` folder. If you installed an earlier version, delete the old `custom_components/mecmeter_emulator` folder.
 
 Add the following Configuration values to your configuration.yaml
 ```
