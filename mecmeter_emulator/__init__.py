@@ -50,7 +50,9 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_TEMPLATES, default={}): {
                     vol.Optional(key): cv.template for key in (*INV_KEYS, *SIT_KEYS)
                 },
-                vol.Required(CONF_UPDATE_INTERVAL, default=60): cv.positive_int,
+                vol.Optional(CONF_UPDATE_INTERVAL, default=60): vol.All(
+                    vol.Coerce(int), vol.Range(min=5)
+                ),
             }
         )
     },
