@@ -120,8 +120,17 @@ def _create_client(conf: ConfigType) -> mqtt.Client:
         else:
             _LOGGER.info("Connected to MQTT broker %s", conf[CONF_BROKER])
 
+    def on_disconnect(client, userdata, flags, reason_code, properties) -> None:
+        if reason_code.is_failure:
+            _LOGGER.warning(
+                "Disconnected from MQTT broker (%s), reconnecting", reason_code
+            )
+
     client.on_connect = on_connect
-    client.connect(conf[CONF_BROKER], conf[CONF_PORT])
+    client.on_disconnect = on_disconnect
+    # connect_async + loop_start: the network thread connects in the background
+    # and keeps retrying, so an unreachable broker does not fail HA setup.
+    client.connect_async(conf[CONF_BROKER], conf[CONF_PORT])
     client.loop_start()
     return client
 
