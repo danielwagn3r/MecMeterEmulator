@@ -18,6 +18,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import TemplateError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import track_time_interval
 from homeassistant.helpers.template import Template
@@ -36,6 +37,7 @@ CONF_UPDATE_INTERVAL = "update_interval"
 INV_KEYS = ("soc",)
 SIT_KEYS = ("akk", "grid", "ld", "pv")
 INV_NUMBER = "1"
+INVALID_STATES = {"", "none", "unknown", "unavailable"}
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -60,6 +62,24 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
+def _render_float(key: str, template: Template) -> float | None:
+    """Render a template to a float, or None if the value is not usable."""
+    try:
+        rendered = template.async_render(parse_result=False)
+    except TemplateError as err:
+        _LOGGER.warning("Error rendering template '%s': %s", key, err)
+        return None
+
+    value = str(rendered).strip()
+    if value.lower() in INVALID_STATES:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        _LOGGER.warning("Template '%s' rendered non-numeric value: %r", key, value)
+        return None
+
+
 def _build_payload(
     templates: dict[str, Template], now: datetime
 ) -> dict[str, Any] | None:
@@ -67,10 +87,9 @@ def _build_payload(
     inv: dict[str, float] = {}
     sit: dict[str, float] = {}
     for key, template in templates.items():
-        rendered = template.async_render()
-        if rendered in ("unknown", "unavailable", None):
+        if (value := _render_float(key, template)) is None:
             continue
-        (inv if key in INV_KEYS else sit)[key] = float(rendered)
+        (inv if key in INV_KEYS else sit)[key] = value
 
     if not inv and not sit:
         return None
