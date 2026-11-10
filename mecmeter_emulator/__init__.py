@@ -15,8 +15,9 @@ from homeassistant.const import (
     CONF_PASSWORD,
     CONF_PORT,
     CONF_USERNAME,
+    EVENT_HOMEASSISTANT_STOP,
 )
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
@@ -135,6 +136,12 @@ def _create_client(conf: ConfigType) -> mqtt.Client:
     return client
 
 
+def _stop_client(client: mqtt.Client) -> None:
+    """Disconnect and stop the MQTT client (blocking, run in executor)."""
+    client.disconnect()
+    client.loop_stop()
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the MEC Meter Emulator from YAML."""
     conf = config[DOMAIN]
@@ -152,7 +159,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             return
         client.publish(topic, json.dumps(payload))
 
-    async_track_time_interval(
+    cancel_interval = async_track_time_interval(
         hass, _async_publish, timedelta(seconds=conf[CONF_UPDATE_INTERVAL])
     )
+
+    async def _async_stop(_event: Event) -> None:
+        cancel_interval()
+        await hass.async_add_executor_job(_stop_client, client)
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_stop)
     return True
