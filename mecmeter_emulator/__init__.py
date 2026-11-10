@@ -6,11 +6,9 @@ from datetime import datetime, timedelta
 import json
 import logging
 import ssl
-import time
 from typing import Any
 
 import paho.mqtt.client as mqtt
-import pytz
 import voluptuous as vol
 
 from homeassistant.const import (
@@ -24,6 +22,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import track_time_interval
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +58,9 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
-def _build_payload(templates: dict[str, Template]) -> dict[str, Any] | None:
+def _build_payload(
+    templates: dict[str, Template], now: datetime
+) -> dict[str, Any] | None:
     """Build the MECMeter payload, or None if no template produced a value."""
     inv: dict[str, float] = {}
     sit: dict[str, float] = {}
@@ -73,12 +74,12 @@ def _build_payload(templates: dict[str, Template]) -> dict[str, Any] | None:
         return None
 
     return {
-        "timestampDevice": int(time.time() * 1000),
+        "timestampDevice": int(now.timestamp() * 1000),
         "qos": "good",
         "payload": {
             "inv": {INV_NUMBER: inv},
             "sit": sit,
-            "ts": datetime.now(pytz.UTC).isoformat(timespec="seconds"),
+            "ts": now.isoformat(timespec="seconds"),
         },
     }
 
@@ -111,7 +112,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     client = _create_client(conf)
 
     def _publish(_now: datetime) -> None:
-        payload = _build_payload(templates)
+        payload = _build_payload(templates, dt_util.utcnow())
         if payload is None:
             return
         client.publish(topic, json.dumps(payload))
