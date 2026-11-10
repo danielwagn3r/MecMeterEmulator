@@ -28,3 +28,15 @@ mec_meter_emulator:
   update_interval: 30
 ```
 The five values are all optional, depending on the inverter hardware and available values you have. Leave out any values you cannot provide.
+
+## Development
+
+Run the tests (Python 3.14):
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements_test.txt
+.venv/bin/pytest
+```
+
+GitHub Actions runs the tests and [hassfest](https://developers.home-assistant.io/blog/2020/04/16/hassfest/) on every pull request.
